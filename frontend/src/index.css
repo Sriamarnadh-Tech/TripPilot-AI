@@ -1,0 +1,241 @@
+
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap");
+
+:root {
+  font-family: "DM Sans", sans-serif;
+  color: #172a3a;
+  background: #ffffff;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  font-family: "DM Sans", sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.navbar-brand {
+  color: #172a3a;
+  letter-spacing: -1px;
+}
+
+.brand-icon {
+  color: #1769e0;
+}
+
+.brand-ai {
+  color: #1769e0;
+}
+
+.hero-section {
+  background: linear-gradient(135deg, #f1f7ff 0%, #ffffff 65%, #e9f5ff 100%);
+  overflow: hidden;
+}
+
+.hero-tag,
+.section-label {
+  color: #1769e0;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
+.hero-title {
+  color: #14283b;
+  font-family: "Manrope", sans-serif;
+  letter-spacing: -2px;
+  line-height: 1.15;
+}
+
+.hero-title span {
+  color: #1769e0;
+}
+
+.hero-description {
+  max-width: 620px;
+  line-height: 1.8;
+}
+
+.feature-chip {
+  padding: 9px 14px;
+  border: 1px solid #dbe7f5;
+  border-radius: 30px;
+  background: #ffffff;
+  color: #34516e;
+  font-size: 0.85rem;
+}
+
+.journey-card {
+  padding: 30px;
+  border: 1px solid #e4edf7;
+  border-radius: 24px;
+  background: #ffffff;
+  box-shadow: 0 20px 60px rgba(25, 65, 110, 0.09);
+}
+
+.journey-illustration {
+  display: grid;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 24px;
+  place-items: center;
+  border-radius: 22px;
+  background: #eaf3ff;
+  font-size: 2.4rem;
+}
+
+.journey-card h3 {
+  font-family: "Manrope", sans-serif;
+  letter-spacing: -0.7px;
+}
+
+.journey-step {
+  display: flex;
+  gap: 15px;
+  align-items: flex-start;
+  margin-top: 22px;
+}
+
+.journey-step > span {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 12px;
+  background: #edf4ff;
+  color: #1769e0;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.journey-step strong {
+  font-size: 0.94rem;
+}
+
+.journey-step p {
+  margin: 4px 0 0;
+  color: #718096;
+  font-size: 0.85rem;
+}
+
+.planner-section {
+  max-width: 1000px;
+}
+
+.planner-section h2 {
+  font-family: "Manrope", sans-serif;
+  letter-spacing: -1px;
+}
+
+.planner-card {
+  padding: 35px;
+  border: 1px solid #e5ecf4;
+  border-radius: 22px;
+  background: #ffffff;
+  box-shadow: 0 12px 45px rgba(20, 45, 75, 0.06);
+}
+
+.form-label {
+  color: #243b53;
+  font-size: 0.93rem;
+}
+
+.form-control,
+.form-select {
+  min-height: 48px;
+  border-color: #dbe4ef;
+  border-radius: 10px;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: #1769e0;
+  box-shadow: 0 0 0 3px rgba(23, 105, 224, 0.1);
+}
+
+.interest-button {
+  padding: 10px 16px;
+  border: 1px solid #dbe4ef;
+  border-radius: 25px;
+  background: #ffffff;
+  color: #42566c;
+  transition: 0.2s ease;
+}
+
+.interest-button:hover,
+.interest-button.selected {
+  border-color: #1769e0;
+  background: #edf4ff;
+  color: #1769e0;
+}
+
+.style-option {
+  display: flex;
+  min-height: 85px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  padding: 15px;
+  border: 1px solid #dbe4ef;
+  border-radius: 12px;
+  background: #ffffff;
+  text-align: left;
+  transition: 0.2s ease;
+}
+
+.style-option small {
+  color: #718096;
+}
+
+.style-option.active {
+  border-color: #1769e0;
+  background: #edf4ff;
+  box-shadow: 0 0 0 1px #1769e0;
+}
+
+.plan-button {
+  min-height: 54px;
+  border: none;
+  border-radius: 12px;
+  background: #1769e0;
+  font-weight: 700;
+}
+
+.plan-button:hover {
+  background: #1057bf;
+}
+
+footer {
+  color: #243b53;
+}
+
+@media (max-width: 576px) {
+  .hero-title {
+    font-size: 2.5rem;
+  }
+
+  .journey-card,
+  .planner-card {
+    padding: 22px;
+  }
+
+  .planner-section {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+}
