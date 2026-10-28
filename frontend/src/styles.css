@@ -1,0 +1,35 @@
+/* AdaptiveTrip: Place discovery cards */
+
+.placecard {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 16px;
+  background: #ffffff;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+  overflow-wrap: anywhere;
+}
+
+.placecard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.placecard a {
+  color: #2459d3;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.placecard a:hover {
+  text-decoration: underline;
+}
+
+.placecard h3 {
+  overflow-wrap: anywhere;
+}
+
+.placecard .badge {
+  white-space: normal;
+}
