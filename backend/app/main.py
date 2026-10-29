@@ -1,5 +1,8 @@
 from datetime import date, datetime, timezone
+import requests
+from .discovery import discover_places
 from uuid import uuid4
+import httpx
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,9 +45,284 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+@app.get("/api/weather")
+async def get_weather(destination: str, forecast_days: int = 3):
+    """
+    Fetch current weather and a daily forecast for an Indian destination.
+    Uses Open-Meteo APIs; no API key required.
+    """
 
+    destination = destination.strip()
 
+    if not destination:
+        raise HTTPException(
+            status_code=400,
+            detail="Destination cannot be empty.",
+        )
 
+    if not 1 <= forecast_days <= 7:
+        raise HTTPException(
+            status_code=400,
+            detail="forecast_days must be between 1 and 7.",
+        )
+
+    geocoding_url = "https://geocoding-api.open-meteo.com/v1/search"
+    forecast_url = "https://api.open-meteo.com/v1/forecast"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # Step 1: Resolve the destination to coordinates.
+            location_response = await client.get(
+                geocoding_url,
+                params={
+                    "name": destination,
+                    "count": 10,
+                    "language": "en",
+                    "format": "json",
+                    "countryCode": "IN",
+                },
+            )
+            location_response.raise_for_status()
+            location_data = location_response.json()
+
+            locations = location_data.get("results", [])
+
+            if not locations:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No matching Indian location found for '{destination}'.",
+                )
+
+            # Prefer an exact city-name match where possible.
+            location = next(
+                (
+                    item
+                    for item in locations
+                    if item.get("name", "").casefold()
+                    == destination.casefold()
+                ),
+                locations[0],
+            )
+
+            latitude = location["latitude"]
+            longitude = location["longitude"]
+
+            # Step 2: Retrieve current conditions and daily forecasts.
+            weather_response = await client.get(
+                forecast_url,
+                params={
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "current": (
+                        "temperature_2m,"
+                        "relative_humidity_2m,"
+                        "apparent_temperature,"
+                        "precipitation,"
+                        "weather_code,"
+                        "wind_speed_10m"
+                    ),
+                    "daily": (
+                        "weather_code,"
+                        "temperature_2m_max,"
+                        "temperature_2m_min,"
+                        "precipitation_probability_max,"
+                        "precipitation_sum,"
+                        "wind_speed_10m_max"
+                    ),
+                    "forecast_days": forecast_days,
+                    "timezone": "auto",
+                    "temperature_unit": "celsius",
+                    "wind_speed_unit": "kmh",
+                },
+            )
+            weather_response.raise_for_status()
+            weather_data = weather_response.json()
+
+    except HTTPException:
+        raise
+
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail="Weather service timed out. Please try again later.",
+        )
+
+    except httpx.HTTPError:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to retrieve weather data from Open-Meteo.",
+        )
+
+    except (KeyError, ValueError):
+        raise HTTPException(
+            status_code=502,
+            detail="Weather service returned an unexpected response.",
+        )
+
+    return {
+        "destination": {
+            "name": location.get("name"),
+            "state": location.get("admin1"),
+            "country": location.get("country"),
+            "latitude": latitude,
+            "longitude": longitude,
+            "timezone": weather_data.get("timezone"),
+        },
+        "current_weather": weather_data.get("current", {}),
+        "daily_forecast": weather_data.get("daily", {}),
+        "units": {
+            "temperature": "°C",
+            "wind_speed": "km/h",
+            "precipitation": "mm",
+            "precipitation_probability": "%",
+        },
+        "source": "Open-Meteo",
+        "source_url": "https://open-meteo.com/",
+    }
+
+@app.get("/api/route")
+async def get_route(
+    origin: str,
+    destination: str,
+):
+    """
+    Find a driving route between two Indian destinations.
+    Uses Open-Meteo Geocoding and the public OSRM routing service.
+    No API key required.
+    """
+
+    origin = origin.strip()
+    destination = destination.strip()
+
+    if not origin or not destination:
+        raise HTTPException(
+            status_code=400,
+            detail="Origin and destination cannot be empty.",
+        )
+
+    if origin.casefold() == destination.casefold():
+        raise HTTPException(
+            status_code=400,
+            detail="Origin and destination must be different.",
+        )
+
+    geocoding_url = "https://geocoding-api.open-meteo.com/v1/search"
+    osrm_url = "https://router.project-osrm.org/route/v1/driving"
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+
+            # Resolve both place names to coordinates.
+            resolved_locations = []
+
+            for place_name in (origin, destination):
+                geo_response = await client.get(
+                    geocoding_url,
+                    params={
+                        "name": place_name,
+                        "count": 10,
+                        "language": "en",
+                        "format": "json",
+                        "countryCode": "IN",
+                    },
+                )
+                geo_response.raise_for_status()
+
+                geo_data = geo_response.json()
+                results = geo_data.get("results", [])
+
+                if not results:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Location not found in India: {place_name}",
+                    )
+
+                # Prefer an exact name match.
+                match = next(
+                    (
+                        item for item in results
+                        if item.get("name", "").casefold()
+                        == place_name.casefold()
+                    ),
+                    results[0],
+                )
+
+                resolved_locations.append(match)
+
+            start, end = resolved_locations
+
+            # OSRM expects longitude,latitude coordinates.
+            coordinates = (
+                f"{start['longitude']},{start['latitude']};"
+                f"{end['longitude']},{end['latitude']}"
+            )
+
+            route_response = await client.get(
+                f"{osrm_url}/{coordinates}",
+                params={
+                    "overview": "false",
+                    "steps": "false",
+                },
+            )
+            route_response.raise_for_status()
+
+            route_data = route_response.json()
+
+    except HTTPException:
+        raise
+
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail="The routing service timed out. Please try again.",
+        )
+
+    except httpx.HTTPError:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to retrieve route information.",
+        )
+
+    except (KeyError, ValueError, TypeError):
+        raise HTTPException(
+            status_code=502,
+            detail="The location or routing service returned invalid data.",
+        )
+
+    if route_data.get("code") != "Ok" or not route_data.get("routes"):
+        raise HTTPException(
+            status_code=404,
+            detail="No driving route could be found between these locations.",
+        )
+
+    route = route_data["routes"][0]
+
+    return {
+        "origin": {
+            "name": start.get("name"),
+            "state": start.get("admin1"),
+            "latitude": start["latitude"],
+            "longitude": start["longitude"],
+        },
+        "destination": {
+            "name": end.get("name"),
+            "state": end.get("admin1"),
+            "latitude": end["latitude"],
+            "longitude": end["longitude"],
+        },
+        "route": {
+            "distance_km": round(route["distance"] / 1000, 2),
+            "estimated_duration_minutes": round(route["duration"] / 60, 1),
+            "estimated_duration_hours": round(route["duration"] / 3600, 2),
+            "profile": "driving",
+        },
+        "source": "OSRM",
+        "source_url": "https://project-osrm.org/",
+        "notice": (
+            "Distance and duration are estimates. Actual travel time "
+            "may vary with traffic, road conditions, and stops."
+        ),
+    }
 
 @app.get("/")
 def root():
@@ -72,21 +350,25 @@ def search_places(
     radius_m: int = 7000,
     limit: int = 30,
 ):
-    """
-    Discover mapped attractions and restaurants.
-
-    Example:
-    /api/discover/places?destination=Jaipur&category=both
-    """
-
-    return discover_places(
-        destination=destination,
-        category=category,
-        radius_m=radius_m,
-        limit=limit,
-    )
-
-
+    try:
+        return discover_places(
+            destination=destination,
+            category=category,
+            radius_m=radius_m,
+            limit=limit,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except requests.RequestException as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Place discovery is temporarily unavailable. "
+                "Please try again later."
+            ),
+        ) from exc
 # ---------------------------------------------------------
 # INITIAL TRIP PLANNING
 # ---------------------------------------------------------
@@ -94,7 +376,28 @@ def search_places(
 @app.post("/api/trips/plan")
 def create_plan(trip: TripRequest):
     request_data = trip.model_dump(mode="json")
-    itinerary = generate_itinerary(trip.model_dump())
+        # Discover real attractions and restaurants for the destination.
+    discovered_places = []
+
+    try:
+        discovery_result = discover_places(
+            destination=trip.destination,
+            category="both",
+            radius_m=7000,
+            limit=30,
+        )
+
+        discovered_places = discovery_result.get("places", [])
+
+    except Exception as exc:
+        # Keep trip planning available if the public discovery service fails.
+        print(f"Place discovery unavailable: {exc}")
+
+    # Generate the itinerary using real places when available.
+    itinerary = generate_itinerary(
+        trip.model_dump(),
+        places=discovered_places,
+    )
 
     validation = validate_itinerary(
         itinerary,

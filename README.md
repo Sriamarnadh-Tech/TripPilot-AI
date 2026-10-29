@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # AdaptiveTrip
 Evidence-Aware Adaptive Travel Planning under Sequential Disruptions
 
@@ -25,6 +24,3 @@ From `backend`, with the venv active:
 `python -m app.evaluation`
 
 This prototype uses synthetic disruptions and illustrative activities/costs. It does not authenticate sources or connect live weather, attraction, or routing APIs. Research claims must be based on measured experiments, not the demo output.
-=======
-# TripPilot-AI
->>>>>>> origin/main

@@ -44,13 +44,23 @@ TIMES = ["09:00", "12:00", "16:00"]
 DURATIONS = [120, 90, 120]
 
 
-def generate_itinerary(trip):
-    days = (trip["endDate"] - trip["startDate"]).days + 1
+def generate_itinerary(trip, places=None):
+    """
+    Generate an itinerary using discovered places where possible.
+
+    Falls back to illustrative activities when no suitable real place
+    is available. Activity costs remain estimates, not live prices.
+    """
+    from datetime import timedelta
+
+    days = (
+        trip["endDate"] - trip["startDate"]
+    ).days + 1
 
     interests = [
-        interest
-        for interest in trip.get("interests", [])
-        if interest in OPTIONS
+        item
+        for item in trip.get("interests", [])
+        if item in OPTIONS
     ] or ["History", "Food", "Nature"]
 
     costs = COSTS.get(
@@ -58,48 +68,179 @@ def generate_itinerary(trip):
         COSTS["Balanced"],
     )
 
+    places = places or []
+
+    def matches_interest(place, interest):
+        text = " ".join(
+            str(place.get(key) or "")
+            for key in (
+                "name",
+                "category",
+                "place_type",
+                "cuisine",
+            )
+        ).lower()
+
+        if interest == "Food":
+            return place.get("category") == "restaurant"
+
+        if place.get("category") == "restaurant":
+            return False
+
+        keywords = {
+            "History": (
+                "historic", "museum", "monument", "heritage",
+                "castle", "fort", "temple", "palace", "archaeological",
+            ),
+            "Nature": (
+                "park", "garden", "nature", "viewpoint",
+                "lake", "waterfall", "forest", "beach",
+            ),
+            "Adventure": (
+                "adventure", "theme_park", "zoo", "outdoor",
+                "viewpoint",
+            ),
+            "Shopping": (
+                "market", "mall", "shopping", "bazaar",
+            ),
+            "Relaxation": (
+                "park", "garden", "spa", "lake", "beach",
+            ),
+        }
+
+        if interest not in keywords:
+            return False
+
+        return any(word in text for word in keywords[interest])
+
+    # Sort nearby places first and prepare a pool for each interest.
+    available = sorted(
+        places,
+        key=lambda place: place.get("distance_km", float("inf")),
+    )
+
+    used_place_ids = set()
     result = []
 
-    for n in range(1, days + 1):
-        titles = [
-            OPTIONS[interest][(n + j - 1) % 3]
-            for j, interest in enumerate(interests[:3])
+    for day_number in range(1, days + 1):
+        selected_interests = [
+            interests[(day_number + index - 1) % len(interests)]
+            for index in range(min(3, len(interests)))
         ]
 
-        fallback = [
+        fallback_titles = [
             "Explore the surrounding area",
             "Take a meal break and rest",
             "Enjoy flexible leisure time",
         ]
 
-        titles += fallback[len(titles):]
-
         activities = []
 
-        for i, title in enumerate(titles[:3]):
-            outdoor = any(
-                word in title.lower()
-                for word in [
-                    "nature",
-                    "scenic",
-                    "viewpoint",
-                    "outdoor",
-                    "walk",
-                ]
+        for index in range(3):
+            interest = (
+                selected_interests[index]
+                if index < len(selected_interests)
+                else None
             )
 
-            activities.append({
-                "time": TIMES[i],
-                "duration_minutes": DURATIONS[i],
-                "title": title,
-                "estimated_cost": costs[i] * trip["travelers"],
-                "category": "outdoor" if outdoor else "indoor",
-            })
+            candidates = [
+                place
+                for place in available
+                if place.get("place_id") not in used_place_ids
+            ]
+
+            matched = next(
+                (
+                    place
+                    for place in candidates
+                    if interest and matches_interest(place, interest)
+                ),
+                None,
+            )
+
+            # For non-food interests, use another attraction as a
+            # fallback when a specific interest match is unavailable.
+            if (
+                matched is None
+                and interest
+                and interest != "Food"
+            ):
+                matched = next(
+                    (
+                        place
+                        for place in candidates
+                        if place.get("category") == "attraction"
+                    ),
+                    None,
+                )
+
+            if matched:
+                used_place_ids.add(matched.get("place_id"))
+
+                activity = {
+                    "time": TIMES[index],
+                    "duration_minutes": DURATIONS[index],
+                    "title": matched["name"],
+                    "estimated_cost": (
+                        costs[index] * trip["travelers"]
+                    ),
+                    "category": matched.get("category", "attraction"),
+                    "is_real_place": True,
+                    "cost_is_estimate": True,
+                    "place_id": matched.get("place_id"),
+                    "address": matched.get("address"),
+                    "latitude": matched.get(
+                        "latitude", matched.get("lat")
+                    ),
+                    "longitude": matched.get(
+                        "longitude", matched.get("lon")
+                    ),
+                    "map_url": matched.get("map_url"),
+                    "website": matched.get("website"),
+                    "opening_hours": matched.get("opening_hours"),
+                    "distance_km": matched.get("distance_km"),
+                    "data_source": matched.get(
+                        "data_source", "OpenStreetMap"
+                    ),
+                }
+            else:
+                title = (
+                    OPTIONS[interest][
+                        (day_number + index - 1) % 3
+                    ]
+                    if interest
+                    else fallback_titles[index]
+                )
+
+                outdoor = any(
+                    word in title.lower()
+                    for word in (
+                        "nature", "scenic", "viewpoint",
+                        "outdoor", "walk",
+                    )
+                )
+
+                activity = {
+                    "time": TIMES[index],
+                    "duration_minutes": DURATIONS[index],
+                    "title": title,
+                    "estimated_cost": (
+                        costs[index] * trip["travelers"]
+                    ),
+                    "category": (
+                        "outdoor" if outdoor else "indoor"
+                    ),
+                    "is_real_place": False,
+                    "cost_is_estimate": True,
+                }
+
+            activities.append(activity)
 
         result.append({
-            "day": n,
+            "day": day_number,
             "date": (
-                trip["startDate"] + timedelta(days=n - 1)
+                trip["startDate"]
+                + timedelta(days=day_number - 1)
             ).isoformat(),
             "destination": trip["destination"],
             "activities": activities,
@@ -110,7 +251,6 @@ def generate_itinerary(trip):
         })
 
     return result
-
 
 def validate_itinerary(itinerary, budget):
     errors = []
