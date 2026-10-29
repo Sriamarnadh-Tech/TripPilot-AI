@@ -187,3 +187,160 @@ def test_budget_repair_never_reduces_activity_below_minimum(
     assert all(cost >= 100 for cost in costs)
     assert sum(costs) <= 1000
     assert len(changes) > 0
+# --------------------------------------------------
+# REAL ITINERARY VALIDATION TESTS
+# These tests use the actual validate_itinerary()
+# function instead of a mocked validator.
+# --------------------------------------------------
+
+from copy import deepcopy
+
+from app.planner import validate_itinerary
+
+
+def make_validation_itinerary():
+    """Create a valid itinerary for validation tests."""
+    return [
+        {
+            "day": 1,
+            "date": "2026-11-01",
+            "destination": "Jaipur",
+            "activities": [
+                {
+                    "time": "09:00",
+                    "duration_minutes": 120,
+                    "title": "Visit museum",
+                    "estimated_cost": 500,
+                    "category": "indoor",
+                },
+                {
+                    "time": "12:00",
+                    "duration_minutes": 90,
+                    "title": "Explore local market",
+                    "estimated_cost": 300,
+                    "category": "outdoor",
+                },
+                {
+                    "time": "15:00",
+                    "duration_minutes": 60,
+                    "title": "Visit heritage site",
+                    "estimated_cost": 200,
+                    "category": "indoor",
+                },
+            ],
+            "estimated_daily_cost": 1000,
+        }
+    ]
+
+
+def test_real_validation_accepts_valid_itinerary():
+    itinerary = make_validation_itinerary()
+
+    result = validate_itinerary(itinerary, budget=1500)
+
+    assert result["is_valid"] is True
+    assert result["errors"] == []
+    assert result["estimated_total_cost"] == 1000
+    assert result["budget"] == 1500
+    assert result["remaining_budget"] == 500
+    assert len(result["warnings"]) >= 1
+
+
+def test_real_validation_rejects_itinerary_over_budget():
+    itinerary = make_validation_itinerary()
+
+    result = validate_itinerary(itinerary, budget=900)
+
+    assert result["is_valid"] is False
+    assert any(
+        "exceeds budget" in error
+        for error in result["errors"]
+    )
+    assert result["estimated_total_cost"] == 1000
+    assert result["remaining_budget"] == -100
+
+
+def test_real_validation_detects_overlapping_activities():
+    itinerary = make_validation_itinerary()
+
+    # The first activity ends at 11:00.
+    # The second starts at 10:30, creating an overlap.
+    itinerary[0]["activities"][1]["time"] = "10:30"
+
+    result = validate_itinerary(itinerary, budget=1500)
+
+    assert result["is_valid"] is False
+    assert any(
+        "overlapping activities" in error
+        for error in result["errors"]
+    )
+
+
+def test_real_validation_rejects_invalid_time():
+    itinerary = make_validation_itinerary()
+
+    itinerary[0]["activities"][0]["time"] = "25:70"
+
+    result = validate_itinerary(itinerary, budget=1500)
+
+    assert result["is_valid"] is False
+    assert any(
+        "invalid time" in error
+        for error in result["errors"]
+    )
+
+
+def test_real_validation_rejects_zero_duration():
+    itinerary = make_validation_itinerary()
+
+    itinerary[0]["activities"][0]["duration_minutes"] = 0
+
+    result = validate_itinerary(itinerary, budget=1500)
+
+    assert result["is_valid"] is False
+    assert any(
+        "invalid duration" in error
+        for error in result["errors"]
+    )
+
+
+def test_real_validation_recalculates_daily_cost():
+    itinerary = make_validation_itinerary()
+
+    # Deliberately supply an incorrect daily total.
+    itinerary[0]["estimated_daily_cost"] = 9999
+
+    result = validate_itinerary(itinerary, budget=1500)
+
+    assert itinerary[0]["estimated_daily_cost"] == 1000
+    assert result["estimated_total_cost"] == 1000
+    assert result["remaining_budget"] == 500
+
+
+def test_real_validation_does_not_modify_activity_details():
+    itinerary = make_validation_itinerary()
+    original = deepcopy(itinerary)
+
+    validate_itinerary(itinerary, budget=1500)
+
+    # Validation recalculates estimated_daily_cost, so compare
+    # activity details rather than the entire itinerary.
+    assert (
+        itinerary[0]["activities"]
+        == original[0]["activities"]
+    )
+
+
+def test_real_validation_accepts_activity_ending_at_next_start():
+    itinerary = make_validation_itinerary()
+
+    # First activity: 09:00 to 11:00.
+    # Second activity begins exactly at 11:00.
+    itinerary[0]["activities"][1]["time"] = "11:00"
+
+    result = validate_itinerary(itinerary, budget=1500)
+
+    assert not any(
+        "overlapping activities" in error
+        for error in result["errors"]
+    )

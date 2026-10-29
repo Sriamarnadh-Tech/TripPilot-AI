@@ -1,6 +1,6 @@
 from datetime import date, datetime, timezone
 from uuid import uuid4
-
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -20,13 +20,16 @@ from .evidence import assess_evidence
 from .discovery import discover_places
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    database.init_db()
+    yield
+
+
 app = FastAPI(
-    title="TripPilot API",
-    description=(
-        "Evidence-aware adaptive travel planning "
-        "with live place discovery."
-    ),
+    title="AdaptiveTrip",
     version="1.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -41,9 +44,6 @@ app.add_middleware(
 )
 
 
-@app.on_event("startup")
-def startup():
-    database.init_db()
 
 
 @app.get("/")
